@@ -1,0 +1,7 @@
+---
+title: "In depth NGS Data Analysis"
+author: "Xinyi Lin"
+date: "9/9/2020"
+output: html_document
+---
+

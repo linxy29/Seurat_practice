@@ -1,0 +1,77 @@
+---
+title: "Seurat-Data Integration"
+author: "Xinyi Lin"
+date: "9/9/2020"
+output: html_document
+---
+
+## Data preprocessing
+
+```{r,message=FALSE}
+library(Seurat)
+library(SeuratData)
+```
+
+```{r}
+InstallData("panc8")
+```
+
+```{r}
+data("panc8")
+pancreas.list <- SplitObject(panc8, split.by = "tech")
+pancreas.list <- pancreas.list[c("celseq", "celseq2", "fluidigmc1", "smartseq2")]
+```
+
+```{r}
+for (i in 1:length(pancreas.list)) {
+    pancreas.list[[i]] <- NormalizeData(pancreas.list[[i]], verbose = FALSE)
+    pancreas.list[[i]] <- FindVariableFeatures(pancreas.list[[i]], selection.method = "vst", 
+        nfeatures = 2000, verbose = FALSE)
+}
+```
+
+## Integration of 3 pancreatic islet cell datasets
+
+```{r}
+reference.list <- pancreas.list[c("celseq", "celseq2", "smartseq2")]
+pancreas.anchors <- FindIntegrationAnchors(object.list = reference.list, dims = 1:30)
+```
+
+```{r}
+pancreas.integrated <- IntegrateData(anchorset = pancreas.anchors, dims = 1:30)
+```
+
+```{r}
+library(ggplot2)
+library(cowplot)
+library(patchwork)
+# switch to integrated assay. The variable features of this assay are automatically
+# set during IntegrateData
+DefaultAssay(pancreas.integrated) <- "integrated"
+
+# Run the standard workflow for visualization and clustering
+pancreas.integrated <- ScaleData(pancreas.integrated, verbose = FALSE)
+pancreas.integrated <- RunPCA(pancreas.integrated, npcs = 30, verbose = FALSE)
+pancreas.integrated <- RunUMAP(pancreas.integrated, reduction = "pca", dims = 1:30)
+p1 <- DimPlot(pancreas.integrated, reduction = "umap", group.by = "tech")
+p2 <- DimPlot(pancreas.integrated, reduction = "umap", group.by = "celltype", label = TRUE, 
+    repel = TRUE) + NoLegend()
+p1 + p2
+```
+
+## Cell type classification using an integrated reference
+
+```{r}
+pancreas.query <- pancreas.list[["fluidigmc1"]]
+pancreas.anchors <- FindTransferAnchors(reference = pancreas.integrated, query = pancreas.query, 
+    dims = 1:30)
+predictions <- TransferData(anchorset = pancreas.anchors, refdata = pancreas.integrated$celltype, 
+    dims = 1:30)
+pancreas.query <- AddMetaData(pancreas.query, metadata = predictions)
+```
+
+```{r}
+pancreas.query$prediction.match <- pancreas.query$predicted.id == pancreas.query$celltype
+table(pancreas.query$prediction.match)
+```
+
